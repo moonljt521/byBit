@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/api_client.dart';
 import '../core/models.dart';
 import '../core/ws.dart';
 import '../core/theme.dart';
@@ -25,7 +26,13 @@ class _MarketsPageState extends ConsumerState<MarketsPage> {
   void initState() {
     super.initState();
     _schedule();
-    // WebSocket 实时推送（REST 5 秒轮询作兜底）
+    // 缓存优先：立即渲染上次数据，再走网络刷新
+    ApiClient.I.cachedTickers().then((t) {
+      if (mounted && _wsTickers == null && t.isNotEmpty) {
+        setState(() => _wsTickers = t);
+      }
+    });
+    // WebSocket 实时推送（REST 30 秒轮询作兜底）
     _wsSub = MarketStream.I.subscribe().listen((t) {
       if (mounted) setState(() => _wsTickers = t);
     });

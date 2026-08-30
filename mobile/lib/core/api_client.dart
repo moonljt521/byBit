@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -64,14 +65,11 @@ class CredentialStore {
     required String apiSecret,
     required String username,
   }) async {
-    this.token = token;
-    this.apiKey = apiKey;
-    this.apiSecret = apiSecret;
-    this.username = username;
-    await _storage.write(key: 'token', value: token);
-    await _storage.write(key: 'apiKey', value: apiKey);
-    await _storage.write(key: 'apiSecret', value: apiSecret);
-    await _storage.write(key: 'username', value: username);
+    const sp = _storage;
+    await sp.write(key: 'token', value: token);
+    await sp.write(key: 'apiKey', value: apiKey);
+    await sp.write(key: 'apiSecret', value: apiSecret);
+    await sp.write(key: 'username', value: username);
   }
 
   Future<void> setBaseUrl(String v) async {
@@ -87,85 +85,28 @@ class CredentialStore {
   }
 }
 
-/// 统一 API 客户端：dio + 鉴权/验签拦截器 + 统一业务错误。
+/// 统一 API 客户端：缓存优先（stale-while-revalidate）+ 自动故障转移。
 class ApiClient {
   ApiClient._() {
     _dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 4), // 局域网足够；快速失败以尽快回退缓存
       receiveTimeout: const Duration(seconds: 12),
     ));
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: _onRequest,
-      onError: _onError,
-    ));
-    FallbackCache.I.open();
-  }
-
-  static bool _failoverInProgress = false;
-
-  /// 连接类错误（IP 变了/后端不可达）→ 自动扫描局域网找新地址 → 重发原请求。
-  Future<void> _onError(
-    DioException e,
-    ErrorInterceptorHandler handler,
-  ) async {
-    final isConnectionIssue = e.type == DioExceptionType.connectionError ||
-        e.type == DioExceptionType.connectionTimeout;
-    final alreadyRetried = e.requestOptions.extra['failoverRetried'] == true;
-
-    if (isConnectionIssue && !_failoverInProgress && !alreadyRetried) {
-      _failoverInProgress = true;
-      try {
-        final found = await ServerDiscovery.I.discover();
-        if (found != null) {
-          await CredentialStore.I.setBaseUrl(found);
-          final opts = e.requestOptions..extra['failoverRetried'] = true;
-          try {
-            final resp = await _dio.fetch(opts); // 重发（重新签名）
-            _failoverInProgress = false;
-            handler.resolve(resp);
-            return;
-          } on DioException catch (e2) {
-            _failoverInProgress = false;
-            return handler.next(e2);
-          }
-        }
-      } catch (_) {
-        // 发现失败，按原错误返回
-      }
-      _failoverInProgress = false;
-    }
-    handler.next(e);
+    _dio.interceptors.add(InterceptorsWrapper(onRequest: _onRequest));
   }
 
   static final ApiClient I = ApiClient._();
   late final Dio _dio;
+  Timer? _probe;
 
   Future<void> _onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
     final cred = CredentialStore.I;
-
-    // 自动故障转移重试：path 已是绝对 URL（上次失败的请求），仅替换 host 后直通。
-    // HMAC 签名只覆盖 path+query+body，与 host 无关，原签名可直接复用。
-    final asUri = Uri.tryParse(options.path);
-    if (asUri != null && asUri.hasScheme && asUri.host.isNotEmpty) {
-      final newBase = Uri.parse(cred.baseUrl);
-      final rewritten = newBase.replace(
-        path: asUri.path,
-        query: asUri.query.isEmpty ? null : asUri.query,
-      );
-      options
-        ..queryParameters = const {}
-        ..path = rewritten.toString();
-      handler.next(options);
-      return;
-    }
-
     final base = cred.baseUrl;
     final signPath = Uri.parse(base).path + options.path; // 含 /api/v1 前缀，用于签名
 
-    // query 统一按 key 字典序编码，保证与签名一致，并直接拼入 URL
     final qp = options.queryParameters;
     final sortedKeys = qp.keys.toList()..sort();
     final query = sortedKeys
@@ -201,6 +142,28 @@ class ApiClient {
     throw ApiException(code, (body['msg'] ?? '请求失败') as String);
   }
 
+  bool _isConnectionError(DioException e) {
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout) {
+      return true;
+    }
+    return e.type == DioExceptionType.unknown && e.error is SocketException;
+  }
+
+  ApiException _fromDio(DioException e) {
+    final resp = e.response;
+    if (resp?.data is Map<String, dynamic>) {
+      final body = resp!.data as Map<String, dynamic>;
+      final code = (body['code'] ?? -1) as int;
+      if (code == 10401) CredentialStore.I.clearSession();
+      return ApiException(code, (body['msg'] ?? '请求失败') as String);
+    }
+    if (_isConnectionError(e)) {
+      return ApiException(-1, '网络连接失败：后端服务未启动或网络不可用，已展示最近的缓存数据');
+    }
+    return ApiException(-1, '网络异常：${e.message}');
+  }
+
   static String _cacheKey(String path, Map<String, dynamic>? query) {
     final qs = query == null
         ? ''
@@ -208,23 +171,36 @@ class ApiClient {
     return '$path?$qs';
   }
 
-  /// GET：成功写缓存；连接失败（后端挂了/断网）→ 回退缓存 + 离线标记。
+  /// 同步读取某接口的缓存快照（供页面 init 时立即渲染，随后再网络刷新）。
+  Future<dynamic> peek(String path, [Map<String, dynamic>? query]) =>
+      FallbackCache.I.get(_cacheKey(path, query));
+
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) async {
     final key = _cacheKey(path, query);
     try {
       final data = _unwrap(await _dio.get(path, queryParameters: query));
       FallbackCache.I.setOffline(false);
-      unawaited(FallbackCache.I.put(key, data)); // 异步写缓存，不阻塞响应
+      _stopProbe();
+      unawaited(FallbackCache.I.put(key, data));
       return data;
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.connectionTimeout) {
-        final cached = await FallbackCache.I.get(key);
-        if (cached != null) {
-          FallbackCache.I.setOffline(true);
-          return cached; // 旧数据兜底（已 JSON 归一化，调用方无感知）
-        }
+      if (!_isConnectionError(e)) {
+        throw _fromDio(e);
+      }
+      final cached = await FallbackCache.I.get(key);
+      if (cached != null) {
         FallbackCache.I.setOffline(true);
+        _startProbe();
+        return cached; // 缓存先行，恢复探测放后台
+      }
+      // 无缓存：尝试自动故障转移（找到新地址并重发一次）
+      FallbackCache.I.setOffline(true);
+      _startProbe();
+      final opts = await _tryFailover(e.requestOptions);
+      if (opts != null) {
+        final data = _unwrap(await _dio.fetch(opts));
+        unawaited(FallbackCache.I.put(key, data));
+        return data;
       }
       throw _fromDio(e);
     } on ApiException {
@@ -237,6 +213,7 @@ class ApiClient {
     try {
       final data = _unwrap(await _dio.post(path, data: body ?? {}));
       FallbackCache.I.setOffline(false);
+      _stopProbe();
       return data;
     } on DioException catch (e) {
       throw _fromDio(e);
@@ -251,20 +228,41 @@ class ApiClient {
     }
   }
 
-  ApiException _fromDio(DioException e) {
-    final resp = e.response;
-    if (resp?.data is Map<String, dynamic>) {
-      final body = resp!.data as Map<String, dynamic>;
-      final code = (body['code'] ?? -1) as int;
-      if (code == 10401) CredentialStore.I.clearSession();
-      return ApiException(code, (body['msg'] ?? '请求失败') as String);
+  /// 后台恢复：离线期间周期性探测后端；成功即解除离线标记。
+  void _startProbe() {
+    if (_probe != null) return;
+    _probe = Timer.periodic(const Duration(seconds: 15), (_) async {
+      try {
+        final resp = await _dio.get<void>('/health',
+            options: Options(sendTimeout: const Duration(seconds: 2), receiveTimeout: const Duration(seconds: 2)));
+        if (resp.statusCode == 200) {
+          _stopProbe(); // 下一次正常请求会清除离线标记
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _stopProbe() {
+    _probe?.cancel();
+    _probe = null;
+  }
+
+  /// 局域网自动发现新后端地址并重写请求。找不到返回 null。
+  Future<RequestOptions?> _tryFailover(RequestOptions original) async {
+    try {
+      final found = await ServerDiscovery.I.discover();
+      if (found == null) return null;
+      await CredentialStore.I.setBaseUrl(found);
+      final asUri = Uri.parse(original.path);
+      final newBase = Uri.parse(found);
+      final rewritten = newBase.replace(
+        path: asUri.path,
+        query: asUri.query.isEmpty ? null : asUri.query,
+      );
+      return original..path = rewritten.toString();
+    } catch (_) {
+      return null;
     }
-    // 连接类错误给用户可懂的文案，而不是 dio 原始报错
-    if (e.type == DioExceptionType.connectionError ||
-        e.type == DioExceptionType.connectionTimeout) {
-      return ApiException(-1, '网络连接失败：后端服务未启动或网络不可用，已展示最近的缓存数据');
-    }
-    return ApiException(-1, '网络异常：${e.message}');
   }
 
   // ---------- 业务接口 ----------
@@ -312,7 +310,15 @@ class ApiClient {
         .toList();
   }
 
-  /// K 线：优先 Hive 缓存（离线可见），成功后写缓存。
+  Future<List<Ticker>> cachedTickers() async {
+    final data = await peek('/market/tickers') as Map<String, dynamic>?;
+    if (data == null) return const [];
+    return (data['tickers'] as List<dynamic>)
+        .map((e) => Ticker.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// K 线：网络失败时回退 Hive 持久缓存（本函数自己的兜底盒）。
   Future<List<Candle>> klines(String symbol, String bar, {int limit = 200}) async {
     final box = await Hive.openBox('klines');
     final cacheKey = '$symbol|$bar';
@@ -326,8 +332,7 @@ class ApiClient {
       await box.put(cacheKey, list.map((c) => c.toJson()).toList());
       return list;
     } on ApiException {
-      rethrow;
-    } catch (_) {
+      // 网络失败 → 回退本函数自身的 K 线缓存
       final cached = box.get(cacheKey) as List<dynamic>?;
       if (cached == null) rethrow;
       return cached

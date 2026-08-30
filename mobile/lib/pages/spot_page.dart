@@ -37,8 +37,29 @@ class _SpotPageState extends ConsumerState<SpotPage> {
   @override
   void initState() {
     super.initState();
+    _loadCached(); // 缓存优先立即渲染
     _load();
     _timer = Timer.periodic(const Duration(seconds: 6), (_) => _load());
+  }
+
+  Future<void> _loadCached() async {
+    final candles = await ApiClient.I.peek(
+        '/market/klines', {'symbol': _symbol, 'bar': _bar, 'limit': '200'});
+    if (mounted && candles is Map) {
+      final list = (candles['candles'] as List)
+          .map((e) => Candle.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      setState(() => _candles = list);
+    }
+    final depth = await ApiClient.I.peek(
+        '/market/depth', {'symbol': _symbol, 'size': '10'});
+    if (mounted && depth is Map) {
+      final d = Depth.fromJson(Map<String, dynamic>.from(depth));
+      setState(() {
+        _bids = d.bids.take(8).toList();
+        _asks = d.asks.take(8).toList().reversed.toList();
+      });
+    }
   }
 
   @override
