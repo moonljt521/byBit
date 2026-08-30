@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_ledger_created;
+ALTER TABLE users DROP COLUMN IF EXISTS role;

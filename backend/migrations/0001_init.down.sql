@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS trading_pairs;
+DROP TABLE IF EXISTS coins;
+DROP TABLE IF EXISTS ledger_entries;
+DROP TABLE IF EXISTS balances;
+DROP TABLE IF EXISTS users;

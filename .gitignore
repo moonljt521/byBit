@@ -1,0 +1,44 @@
+# ========== dependencies ==========
+node_modules/
+
+# ========== 构建产物 ==========
+frontend/dist/
+admin/dist/
+backend/bin/
+backend/tmp/
+mobile/build/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
+# ========== Go ==========
+*.test
+coverage.out
+
+# ========== 环境与密钥（严禁入库）==========
+.env
+.env.local
+.env.*.local
+deploy/certs/
+*.pem
+*.key
+!**/pubkey.pem
+
+# ========== 本机路径 / 工具链 ==========
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/ios/Pods/
+mobile/.dart_tool/
+mobile/.flutter-plugins*
+**/.plugin_symlinks
+
+# ========== 运行时数据 / 日志 ==========
+*.log
+data/
+pgdata/
+
+# ========== OS / 编辑器 ==========
+.DS_Store
+.idea/
+.vscode/
+*.swp

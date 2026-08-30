@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: CryptoSim API
+  description: |
+    虚拟加密货币交易所（模拟盘）API。
+
+    ## 鉴权模型（双重）
+    1. **JWT 身份**：登录/注册返回 `token`，请求头 `Authorization: Bearer <token>`
+    2. **HMAC 请求验签**（私有接口必须）：登录返回 `api_key` / `api_secret`（明文仅此一次）
+       - 请求头：`X-API-KEY`、`X-API-TIMESTAMP`（unix 秒，±300s）、`X-API-SIGNATURE`
+       - stringToSign = `timestamp \n METHOD \n 完整路径(含/api/v1) \n query(按key字典序,k=v用&连接) \n sha256hex(body)`
+       - `X-API-SIGNATURE = hex(HMAC-SHA256(api_secret, stringToSign))`
+    3. 限流：全局 300 次/10s/IP；登录注册 20 次/分/IP（429 = 触发限流）
+  version: 0.2.0
+servers:
+  - url: http://localhost:8080
+tags:
+  - {name: auth, description: 认证与凭证}
+  - {name: market, description: 行情（公开）}
+  - {name: spot, description: 现货交易}
+  - {name: futures, description: 永续合约}
+  - {name: account, description: 账户}
+  - {name: learn, description: 学习中心（公开）}
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: 注册（送 10,000 虚拟 USDT，返回 JWT + HMAC 凭证）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, username, password]
+              properties:
+                email: {type: string, example: a@b.com}
+                username: {type: string, pattern: "^[a-zA-Z0-9_]{3,20}$"}
+                password: {type: string, minLength: 8}
+      responses:
+        "200": {description: OK}
+        "400": {description: 参数错误/账号已存在}
+  /api/v1/auth/login:
+    post: {tags: [auth], summary: 登录（每次登录轮换 HMAC 凭证）, responses: {"200": {description: OK}, "401": {description: 账号或密码错误}, "429": {description: 限流}}}
+  /api/v1/auth/credentials/reset:
+    post: {tags: [auth], summary: 重置 HMAC 凭证（需登录，旧凭证立即失效）, responses: {"200": {description: OK}}}
+  /api/v1/market/tickers:
+    get: {tags: [market], summary: 现货 24h 行情列表, responses: {"200": {description: OK}}}
+  /api/v1/market/klines:
+    get:
+      tags: [market]
+      summary: K 线
+      parameters:
+        - {name: symbol, in: query, required: true, schema: {type: string, example: BTCUSDT}}
+        - {name: bar, in: query, schema: {type: string, enum: [1m, 5m, 15m, 1h, 4h, 1d]}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 500}}
+      responses: {"200": {description: OK}}
+  /api/v1/market/depth:
+    get: {tags: [market], summary: 盘口深度, parameters: [{name: symbol, in: query, required: true, schema: {type: string}}, {name: size, in: query, schema: {type: integer}}], responses: {"200": {description: OK}}}
+  /api/v1/market/trades:
+    get: {tags: [market], summary: 最近成交, parameters: [{name: symbol, in: query, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/spot/orders:
+    post:
+      tags: [spot]
+      summary: 下单（限价/市价/条件单，支持 Post-Only 与幂等）
+      security: [{bearerAuth: [], hmacAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol, side, type, amount]
+              properties:
+                symbol: {type: string, example: BTCUSDT}
+                side: {type: string, enum: [buy, sell]}
+                type: {type: string, enum: [limit, market]}
+                price: {type: string, description: 限价必填}
+                amount: {type: string, description: base 数量}
+                trigger_price: {type: string, description: ">0 为条件单：buy 涨破触发 / sell 跌破触发，触发后按市价成交"}
+                post_only: {type: boolean, description: 会立即成交则拒绝}
+                client_order_id: {type: string, description: 幂等号，重复提交返回原订单}
+      responses:
+        "200": {description: OK}
+        "400": {description: 余额不足 / 最小金额 5 USDT / Post-Only 拒绝}
+    get:
+      tags: [spot]
+      summary: 查询订单（?status=open 或 history；见子路径）
+      security: [{bearerAuth: [], hmacAuth: []}]
+      responses: {"200": {description: OK}}
+  /api/v1/spot/orders/{id}:
+    delete:
+      tags: [spot]
+      summary: 撤单并解冻
+      security: [{bearerAuth: [], hmacAuth: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: integer}}]
+      responses: {"200": {description: OK}}
+  /api/v1/spot/orders/open:
+    get: {tags: [spot], summary: 当前委托, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/spot/orders/history:
+    get: {tags: [spot], summary: 历史委托, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/spot/trades:
+    get: {tags: [spot], summary: 我的成交记录, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/futures/positions:
+    post:
+      tags: [futures]
+      summary: 开仓（市价，逐仓）
+      security: [{bearerAuth: [], hmacAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symbol: {type: string}
+                side: {type: string, enum: [long, short]}
+                leverage: {type: integer, minimum: 1, maximum: 20}
+                amount: {type: string}
+      responses: {"200": {description: OK}}
+    get:
+      tags: [futures]
+      summary: 当前持仓（含标记价/浮盈/强平价）
+      security: [{bearerAuth: [], hmacAuth: []}]
+      responses: {"200": {description: OK}}
+  /api/v1/futures/positions/{id}/close:
+    post: {tags: [futures], summary: 平仓（amount 空为全平）, security: [{bearerAuth: [], hmacAuth: []}], parameters: [{name: id, in: path, required: true, schema: {type: integer}}], responses: {"200": {description: OK}}}
+  /api/v1/futures/positions/history:
+    get: {tags: [futures], summary: 历史仓位, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/futures/funding:
+    get: {tags: [futures], summary: 资金费率结算记录, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/account/me:
+    get: {tags: [account], summary: 当前用户 + 余额, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/account/reset:
+    post: {tags: [account], summary: 重置账户为初始 10,000 USDT, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /api/v1/learn/coins:
+    get: {tags: [learn], summary: 币种百科目录, responses: {"200": {description: OK}}}
+  /api/v1/learn/coins/{slug}:
+    get: {tags: [learn], summary: 百科正文, parameters: [{name: slug, in: path, required: true, schema: {type: string, example: btc}}], responses: {"200": {description: OK}}}
+  /api/v1/learn/concepts:
+    get: {tags: [learn], summary: 教程目录, responses: {"200": {description: OK}}}
+  /api/v1/learn/glossary:
+    get: {tags: [learn], summary: 术语词典, responses: {"200": {description: OK}}}
+  /api/v1/admin/stats:
+    get: {tags: [admin], summary: 运营看板（需 admin 角色）, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}, "403": {description: 非管理员}}}
+  /api/v1/admin/users:
+    get: {tags: [admin], summary: 用户列表, security: [{bearerAuth: [], hmacAuth: []}], parameters: [{name: keyword, in: query, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/admin/users/{id}/grant:
+    post: {tags: [admin], summary: 调拨虚拟资金（审计流水）, security: [{bearerAuth: [], hmacAuth: []}], parameters: [{name: id, in: path, required: true, schema: {type: integer}}], responses: {"200": {description: OK}}}
+  /api/v1/admin/login-logs:
+    get: {tags: [admin], summary: 登录审计日志, security: [{bearerAuth: [], hmacAuth: []}], responses: {"200": {description: OK}}}
+  /metrics:
+    get: {summary: Prometheus 指标, responses: {"200": {description: OK}}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+    hmacAuth: {type: apiKey, in: header, name: X-API-SIGNATURE, description: 需同时携带 X-API-KEY / X-API-TIMESTAMP，签名算法见文档头}
