@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -212,16 +213,16 @@ class ApiClient {
     final key = _cacheKey(path, query);
     try {
       final data = _unwrap(await _dio.get(path, queryParameters: query));
-      FallbackCache.I.put(key, data);
       FallbackCache.I.setOffline(false);
+      unawaited(FallbackCache.I.put(key, data)); // 异步写缓存，不阻塞响应
       return data;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout) {
-        final cached = FallbackCache.I.get(key);
+        final cached = await FallbackCache.I.get(key);
         if (cached != null) {
           FallbackCache.I.setOffline(true);
-          return cached; // 旧数据兜底，调用方无感知
+          return cached; // 旧数据兜底（已 JSON 归一化，调用方无感知）
         }
         FallbackCache.I.setOffline(true);
       }

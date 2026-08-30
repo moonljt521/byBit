@@ -65,7 +65,7 @@ class _MarketsPageState extends ConsumerState<MarketsPage> {
             ? ListView(children: [
                 const SizedBox(height: 120),
                 const Center(
-                    child: Text('行情加载中…（断网时显示最近缓存）',
+                    child: Text('暂无行情数据：网络不可用且本地无缓存\n启动后端或恢复网络后点「重试」',
                         style: TextStyle(color: Colors.grey))),
                 const SizedBox(height: 16),
                 Center(

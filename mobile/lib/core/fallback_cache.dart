@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// GET 响应的应用层缓存兜底：
@@ -8,10 +11,16 @@ class FallbackCache {
   static final FallbackCache I = FallbackCache._();
 
   static const _boxName = 'fallback';
-  Box _box = Hive.box('klines'); // 占位，open() 后替换
+  final Completer<Box> _ready = Completer<Box>();
 
   Future<void> open() async {
-    _box = await Hive.openBox(_boxName);
+    final box = await Hive.openBox(_boxName);
+    if (!_ready.isCompleted) _ready.complete(box);
+  }
+
+  Future<Box> _box() async {
+    if (!_ready.isCompleted) await open();
+    return _ready.future;
   }
 
   bool _offline = false;
@@ -30,19 +39,30 @@ class FallbackCache {
     _listeners.add(listener);
   }
 
-  void put(String key, dynamic data) {
+  /// 写入前做 JSON 归一化：保证读出的是 Map<String, dynamic>/List，调用方可直接 cast。
+  Future<void> put(String key, dynamic data) async {
     try {
-      _box.put(key, {'data': data, 'ts': DateTime.now().millisecondsSinceEpoch});
-    } catch (_) {}
+      final box = await _box();
+      final normalized = data is String ? data : jsonDecode(jsonEncode(data));
+      await box.put(key, {'data': normalized, 'ts': DateTime.now().millisecondsSinceEpoch});
+    } catch (_) {
+      // 缓存失败不影响主流程
+    }
   }
 
-  dynamic get(String key) {
-    final rec = _box.get(key) as Map?;
-    return rec?['data'];
+  Future<dynamic> get(String key) async {
+    try {
+      final box = await _box();
+      final rec = box.get(key) as Map?;
+      return rec?['data'];
+    } catch (_) {
+      return null;
+    }
   }
 
-  int ts(String key) {
-    final rec = _box.get(key) as Map?;
+  Future<int> ts(String key) async {
+    final box = await _box();
+    final rec = box.get(key) as Map?;
     return (rec?['ts'] ?? 0) as int;
   }
 }
