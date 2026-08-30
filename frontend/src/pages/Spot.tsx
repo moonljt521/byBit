@@ -15,6 +15,7 @@ import {
 } from 'antd'
 import { useSearchParams } from 'react-router-dom'
 import CandleChart from '../components/CandleChart'
+import { C } from '../theme'
 import { changeColor } from './Markets'
 import { fetchDepth, fetchTickers, fetchTrades } from '../api/market'
 import { connectMarket } from '../api/ws'
@@ -41,19 +42,46 @@ const statusText: Record<string, string> = {
 function OrderBook({ depth }: { depth: Depth | null }) {
   const asks = [...(depth?.asks ?? [])].slice(0, 10).reverse()
   const bids = (depth?.bids ?? []).slice(0, 10)
-  const row = ([p, s]: [string, string], color: string, key: string) => (
-    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-      <span style={{ color }}>{p}</span>
-      <span style={{ color: '#666' }}>{Number(s).toFixed(4)}</span>
-    </div>
+  const maxSize = Math.max(
+    1e-12,
+    ...(depth?.bids ?? []).slice(0, 10).map(([, s]) => Number(s)),
+    ...(depth?.asks ?? []).slice(0, 10).map(([, s]) => Number(s)),
   )
+  const row = ([p, s]: [string, string], color: string, key: string, side: 'bid' | 'ask') => {
+    const ratio = Math.min(100, (Number(s) / maxSize) * 100)
+    return (
+      <div
+        key={key}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          padding: '1px 4px',
+          position: 'relative',
+          borderRadius: 2,
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${ratio}%`,
+            background: side === 'bid' ? 'rgba(14,203,129,0.12)' : 'rgba(246,70,93,0.12)',
+          }}
+        />
+        <span style={{ color, position: 'relative' }}>{p}</span>
+        <span style={{ color: C.text2, position: 'relative' }}>{Number(s).toFixed(4)}</span>
+      </div>
+    )
+  }
   return (
     <div style={{ fontSize: 12 }}>
       <Typography.Text type="secondary">卖盘</Typography.Text>
-      <div>{asks.map(([p, s], i) => row([p, s], DOWN, `a${i}`))}</div>
-      <div style={{ borderTop: '1px solid #eee', margin: '6px 0' }} />
+      <div>{asks.map(([p, s], i) => row([p, s], DOWN, `a${i}`, 'ask'))}</div>
+      <div style={{ borderTop: `1px solid ${C.border}`, margin: '6px 0' }} />
       <Typography.Text type="secondary">买盘</Typography.Text>
-      <div>{bids.map(([p, s], i) => row([p, s], UP, `b${i}`))}</div>
+      <div>{bids.map(([p, s], i) => row([p, s], UP, `b${i}`, 'bid'))}</div>
     </div>
   )
 }
@@ -64,7 +92,7 @@ function TradeList({ trades }: { trades: MarketTrade[] }) {
       {trades.map((t, i) => (
         <div key={`${t.ts}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
           <span style={{ color: t.side === 'buy' ? UP : DOWN }}>{t.price}</span>
-          <span style={{ color: '#666' }}>{Number(t.size).toFixed(5)}</span>
+          <span style={{ color: C.text2 }}>{Number(t.size).toFixed(5)}</span>
         </div>
       ))}
     </div>
@@ -165,7 +193,7 @@ function OrderForm({ symbol, last, baseAvailable, usdtAvailable, onDone }: Order
           卖出
         </Button>
       </div>
-      <div style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>
+      <div style={{ marginBottom: 8, fontSize: 12, color: C.text2 }}>
         可用：{side === 'buy' ? `${usdtAvailable} USDT` : `${baseAvailable} ${base}`}
       </div>
       {type === 'limit' && (
@@ -194,9 +222,30 @@ function OrderForm({ symbol, last, baseAvailable, usdtAvailable, onDone }: Order
         placeholder={`数量（${base}）`}
         value={qty}
         onChange={(e) => setQty(e.target.value)}
-        style={{ marginBottom: 8 }}
+        style={{ marginBottom: 6 }}
       />
-      <div style={{ fontSize: 12, color: '#999', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {[25, 50, 75, 100].map((pct) => (
+          <Button
+            key={pct}
+            size="small"
+            style={{ flex: 1, fontSize: 12 }}
+            onClick={() => {
+              const px = parseFloat(type === 'limit' ? price || last : last) || 0
+              if (!px) return
+              const avail = side === 'buy' ? parseFloat(usdtAvailable) || 0 : parseFloat(baseAvailable) || 0
+              const raw =
+                side === 'buy'
+                  ? (avail * (pct / 100)) / (px * 1.001) // 扣手续费预留
+                  : avail * (pct / 100)
+              setQty(raw.toFixed(6).replace(/0+$/, '').replace(/\.$/, ''))
+            }}
+          >
+            {pct}%
+          </Button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 12 }}>
         预估金额：
         {(parseFloat(type === 'limit' ? price || '0' : last || '0') * (parseFloat(qty) || 0)).toFixed(2)} USDT
         （最小 5 USDT，taker 费率 0.1%）
@@ -210,7 +259,7 @@ function OrderForm({ symbol, last, baseAvailable, usdtAvailable, onDone }: Order
       >
         {sideText(side)} {base}
       </Button>
-      <div style={{ fontSize: 12, color: '#999', marginTop: 12 }}>
+      <div style={{ fontSize: 12, color: C.text2, marginTop: 12 }}>
         限价单：市场价触及委托价时自动分批成交；市价单：按最新价 ± 0.05% 滑点立即成交
       </div>
     </Card>

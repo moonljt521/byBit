@@ -20,7 +20,24 @@ export default function CandleChart({ symbol, height = 460 }: Props) {
 
   useEffect(() => {
     if (!boxRef.current) return
-    const chart = init(boxRef.current)
+    const chart = init(boxRef.current, {
+      styles: {
+        grid: {
+          horizontal: { color: '#252930' },
+          vertical: { color: '#252930' },
+        },
+        candle: {
+          bar: {
+            upColor: '#0ECB81',
+            downColor: '#F6465D',
+            noChangeColor: '#868E93',
+          },
+        },
+        indicator: {
+          bars: [{ upColor: '#0ECB81', downColor: '#F6465D' }],
+        },
+      },
+    })
     chart?.createIndicator('MA', false, { id: 'candle_pane' })
     chart?.createIndicator('VOL')
     chartRef.current = chart

@@ -21,7 +21,8 @@ help:
 	@echo "mobile-apk       构建 Android APK（debug）"
 
 services-start:
-	brew services run postgresql; brew services run redis
+	brew services run postgresql@16 2>/dev/null || pg_ctl -D /opt/homebrew/var/postgresql@16 start
+	~/sdk/redis/bin/redis-server --daemonize yes 2>/dev/null || redis-server --daemonize yes
 
 services-stop:
 	brew services stop postgresql; brew services stop redis

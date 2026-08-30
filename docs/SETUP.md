@@ -26,6 +26,9 @@ brew install postgresql@16 redis go nodejs
 # 启动数据库服务（开机自启用 brew services start）
 brew services start postgresql@16
 brew services start redis
+
+# 注意：若本机曾有旧版 PostgreSQL（如 14），brew 升级会破坏其 ICU 依赖，
+# 建议直接用新版 PG16 数据目录，旧库数据如有价值先 pg_dump 迁移
 ```
 
 Flutter（含 Android 工具链）：

@@ -142,6 +142,7 @@ export default function AppLayout() {
               minHeight: 360,
               background: colorBgContainer,
               borderRadius: borderRadiusLG,
+              border: '1px solid #252930',
             }}
           >
             <Outlet />
