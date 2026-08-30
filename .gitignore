@@ -42,3 +42,4 @@ pgdata/
 .idea/
 .vscode/
 *.swp
+test-results/
