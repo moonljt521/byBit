@@ -43,3 +43,4 @@ pgdata/
 .vscode/
 *.swp
 test-results/
+dump.rdb

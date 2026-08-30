@@ -48,7 +48,7 @@ class _MarketsPageState extends ConsumerState<MarketsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final tickers = _wsTickers ?? ref.watch(tickersProvider).value ?? const <Ticker>[];
+    final tickers = _wsTickers ?? ref.watch(tickersProvider).valueOrNull ?? const <Ticker>[];
     return Scaffold(
       appBar: AppBar(
         title: const Text('行情'),
@@ -62,11 +62,18 @@ class _MarketsPageState extends ConsumerState<MarketsPage> {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(tickersProvider),
         child: tickers.isEmpty
-            ? ListView(children: const [
-                SizedBox(height: 120),
-                Center(
+            ? ListView(children: [
+                const SizedBox(height: 120),
+                const Center(
                     child: Text('行情加载中…（断网时显示最近缓存）',
                         style: TextStyle(color: Colors.grey))),
+                const SizedBox(height: 16),
+                Center(
+                  child: OutlinedButton(
+                    onPressed: () => ref.invalidate(tickersProvider),
+                    child: const Text('重试'),
+                  ),
+                ),
               ])
             : ListView.separated(
                 itemCount: tickers.length,

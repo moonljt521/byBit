@@ -280,7 +280,7 @@ class ApiClient {
 
   /// K 线：优先 Hive 缓存（离线可见），成功后写缓存。
   Future<List<Candle>> klines(String symbol, String bar, {int limit = 200}) async {
-    final box = Hive.box('klines');
+    final box = await Hive.openBox('klines');
     final cacheKey = '$symbol|$bar';
     try {
       final data = await get('/market/klines', {
