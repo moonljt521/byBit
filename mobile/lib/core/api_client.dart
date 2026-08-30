@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'discovery.dart';
+import 'fallback_cache.dart';
 import 'models.dart';
 
 class ApiException implements Exception {
@@ -96,6 +97,7 @@ class ApiClient {
       onRequest: _onRequest,
       onError: _onError,
     ));
+    FallbackCache.I.open();
   }
 
   static bool _failoverInProgress = false;
@@ -198,17 +200,43 @@ class ApiClient {
     throw ApiException(code, (body['msg'] ?? '请求失败') as String);
   }
 
+  static String _cacheKey(String path, Map<String, dynamic>? query) {
+    final qs = query == null
+        ? ''
+        : (query.keys.toList()..sort()).map((k) => '$k=${query[k]}').join('&');
+    return '$path?$qs';
+  }
+
+  /// GET：成功写缓存；连接失败（后端挂了/断网）→ 回退缓存 + 离线标记。
   Future<dynamic> get(String path, [Map<String, dynamic>? query]) async {
+    final key = _cacheKey(path, query);
     try {
-      return _unwrap(await _dio.get(path, queryParameters: query));
+      final data = _unwrap(await _dio.get(path, queryParameters: query));
+      FallbackCache.I.put(key, data);
+      FallbackCache.I.setOffline(false);
+      return data;
     } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        final cached = FallbackCache.I.get(key);
+        if (cached != null) {
+          FallbackCache.I.setOffline(true);
+          return cached; // 旧数据兜底，调用方无感知
+        }
+        FallbackCache.I.setOffline(true);
+      }
       throw _fromDio(e);
+    } on ApiException {
+      FallbackCache.I.setOffline(false);
+      rethrow;
     }
   }
 
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) async {
     try {
-      return _unwrap(await _dio.post(path, data: body ?? {}));
+      final data = _unwrap(await _dio.post(path, data: body ?? {}));
+      FallbackCache.I.setOffline(false);
+      return data;
     } on DioException catch (e) {
       throw _fromDio(e);
     }
@@ -229,6 +257,11 @@ class ApiClient {
       final code = (body['code'] ?? -1) as int;
       if (code == 10401) CredentialStore.I.clearSession();
       return ApiException(code, (body['msg'] ?? '请求失败') as String);
+    }
+    // 连接类错误给用户可懂的文案，而不是 dio 原始报错
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout) {
+      return ApiException(-1, '网络连接失败：后端服务未启动或网络不可用，已展示最近的缓存数据');
     }
     return ApiException(-1, '网络异常：${e.message}');
   }
