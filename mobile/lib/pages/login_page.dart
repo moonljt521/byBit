@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +25,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _registerMode = false;
   bool _busy = false;
 
+  /// 后台自愈扫描进行中（换网段 / 后端重启换 IP 后地址会失效）。
+  bool _probing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 地址不许手填，所以失效时只能靠扫描自愈，进页面先试一次
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoDiscoverIfNeeded());
+  }
+
   @override
   void dispose() {
     _account.dispose();
@@ -32,60 +44,28 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  Future<void> _editServer() async {
-    final ctrl = TextEditingController(text: CredentialStore.I.baseUrl);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('服务器地址'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'API 地址')),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.search),
-              label: const Text('自动搜索局域网服务器'),
-              onPressed: () async {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('正在扫描局域网（约 3-5 秒）…')),
-                );
-                final found = await ServerDiscovery.I.discover();
-                if (found != null) {
-                  ctrl.text = found;
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx)
-                        .showSnackBar(SnackBar(content: Text('已找到：$found')));
-                  }
-                } else if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                      content: Text('未找到服务器：确认电脑已启动后端且手机连同一 Wi-Fi')));
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '真机请填电脑局域网 IP，如 http://192.168.3.37:8080/api/v1\n'
-              '安卓模拟器可用 http://10.0.2.2:8080/api/v1',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await CredentialStore.I.setBaseUrl(ctrl.text.trim());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('已保存：${CredentialStore.I.baseUrl}'),
-        ));
+  /// 当前地址不通时静默扫一次，成功即应用；失败不打断，留给面板手动触发。
+  Future<void> _autoDiscoverIfNeeded() async {
+    if (!mounted) return;
+    setState(() => _probing = true);
+    try {
+      if (await ServerDiscovery.I.verifyUrl(CredentialStore.I.baseUrl)) return;
+      final found = await ServerDiscovery.I.discover();
+      if (found != null && mounted) {
+        await CredentialStore.I.setBaseUrl(found);
+        if (mounted) _snack('已自动发现服务器：$found');
       }
+    } finally {
+      if (mounted) setState(() => _probing = false);
     }
-    ctrl.dispose();
+  }
+
+  /// 打开服务器发现面板。地址只由扫描结果决定，面板内不可编辑。
+  Future<void> _discoverDialog() async {
+    await showDialog(
+      context: context,
+      builder: (_) => const _DiscoverPanel(),
+    );
   }
 
   Future<void> _submit() async {
@@ -123,9 +103,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         backgroundColor: Colors.transparent,
         actions: [
           IconButton(
-            tooltip: '服务器地址',
-            icon: const Icon(Icons.dns, color: Colors.white54),
-            onPressed: _editServer,
+            tooltip: '服务器发现',
+            icon: _probing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.dns, color: Colors.white54),
+            onPressed: _probing ? null : _discoverDialog,
           ),
         ],
       ),
@@ -214,6 +200,213 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 服务器发现面板。
+///
+/// 只有「扫描 → 展示 → 应用」一条路径，不提供任何地址编辑入口：
+/// 手填最容易把网段写错，而一旦写错就再也分不清是地址填错还是服务没起来。
+/// 面板同时展示**本机 IP 与待扫描网段** —— 网段算错时一眼就能看出来。
+class _DiscoverPanel extends StatefulWidget {
+  const _DiscoverPanel();
+
+  @override
+  State<_DiscoverPanel> createState() => _DiscoverPanelState();
+}
+
+class _DiscoverPanelState extends State<_DiscoverPanel> {
+  bool _scanning = false;
+  bool _checking = true;
+  int _scanned = 0;
+  int _total = 0;
+  bool? _connected;
+  String _note = '';
+  bool _noteOk = true;
+  List<String> _ips = const [];
+  List<String> _prefixes = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final ips = await ServerDiscovery.I.localIps();
+    final prefixes = await ServerDiscovery.I.candidatePrefixes();
+    if (!mounted) return;
+    setState(() {
+      _ips = ips;
+      _prefixes = prefixes;
+    });
+    await _recheck();
+  }
+
+  /// 探一遍当前地址，刷新连接状态灯。
+  Future<void> _recheck() async {
+    setState(() => _checking = true);
+    final alive = await ServerDiscovery.I.verifyUrl(CredentialStore.I.baseUrl);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _connected = alive;
+    });
+  }
+
+  Future<void> _scan() async {
+    if (_scanning) return;
+    setState(() {
+      _scanning = true;
+      _scanned = 0;
+      _total = 0;
+      _note = '';
+      _noteOk = true;
+    });
+
+    final sw = Stopwatch()..start();
+    final found = await ServerDiscovery.I.discover(
+      onProgress: (scanned, total) {
+        if (!mounted) return;
+        setState(() {
+          _scanned = scanned;
+          _total = total;
+        });
+      },
+    );
+    sw.stop();
+    if (!mounted) return;
+
+    if (found == null) {
+      setState(() {
+        _scanning = false;
+        _noteOk = false;
+        _note = _ips.isEmpty
+            ? '未取到本机 IP，请确认已连上 Wi-Fi'
+            : '未发现服务（耗时 ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s）';
+      });
+      return;
+    }
+
+    await CredentialStore.I.setBaseUrl(found);
+    await _recheck();
+    if (!mounted) return;
+    setState(() {
+      _scanning = false;
+      _noteOk = true;
+      _note = '已连接 ${CredentialStore.I.baseUrl}'
+          '（耗时 ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s）';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = _connected;
+    return AlertDialog(
+      backgroundColor: AppTheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppTheme.border),
+      ),
+      title: const Text('服务器发现', style: TextStyle(fontSize: 16)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _kv('当前地址', CredentialStore.I.baseUrl, selectable: true),
+            const SizedBox(height: 8),
+            Row(children: [
+              _dot(connected),
+              const SizedBox(width: 6),
+              Text(
+                _checking
+                    ? '检测中…'
+                    : (connected == true ? '已连接' : '未连接'),
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+            ]),
+            const Divider(height: 22),
+            _kv('本机 IP', _ips.isEmpty ? '未取到' : _ips.join('、')),
+            const SizedBox(height: 10),
+            _kv('扫描网段',
+                _prefixes.isEmpty ? '—' : _prefixes.map((p) => '$p.*').join('、')),
+            if (_scanning) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: _total == 0 ? null : _scanned / _total,
+                color: AppTheme.accent,
+                backgroundColor: AppTheme.border,
+              ),
+              const SizedBox(height: 6),
+              Text('已扫 $_scanned / $_total',
+                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
+            ],
+            if (_note.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _note,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: _noteOk ? AppTheme.up : AppTheme.down),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _scanning ? null : _scan,
+              icon: _scanning
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.wifi_find, size: 18),
+              label: Text(_scanning ? '扫描中…' : '搜索局域网服务器'),
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              '地址由扫描结果决定，不可手动修改。\n'
+              '需手机与电脑连同一 Wi-Fi，且电脑已启动后端。',
+              style: TextStyle(fontSize: 11, color: Colors.white38, height: 1.5),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  Widget _kv(String k, String v, {bool selectable = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(k, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+        const SizedBox(height: 3),
+        selectable
+            ? SelectableText(v,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))
+            : Text(v, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _dot(bool? connected) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(
+        color: connected == null
+            ? Colors.white24
+            : (connected ? AppTheme.up : AppTheme.down),
+        shape: BoxShape.circle,
       ),
     );
   }

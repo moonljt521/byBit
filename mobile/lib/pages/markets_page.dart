@@ -26,12 +26,12 @@ class _MarketsPageState extends ConsumerState<MarketsPage> {
   void initState() {
     super.initState();
     _schedule();
-    // 缓存优先：立即渲染上次数据，再走网络刷新
+    // 缓存优先：立即渲染上次数据，再走网络刷新（缓存解析失败不影响页面，静默降级）
     ApiClient.I.cachedTickers().then((t) {
       if (mounted && _wsTickers == null && t.isNotEmpty) {
         setState(() => _wsTickers = t);
       }
-    });
+    }).catchError((_) => <Ticker>[]);
     // WebSocket 实时推送（REST 30 秒轮询作兜底）
     _wsSub = MarketStream.I.subscribe().listen((t) {
       if (mounted) setState(() => _wsTickers = t);

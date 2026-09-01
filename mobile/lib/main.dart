@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/api_client.dart';
@@ -45,6 +46,8 @@ class CryptoSimApp extends ConsumerStatefulWidget {
 }
 
 class _CryptoSimAppState extends ConsumerState<CryptoSimApp> {
+  GoRouter? _router;
+
   @override
   void initState() {
     super.initState();
@@ -58,16 +61,14 @@ class _CryptoSimAppState extends ConsumerState<CryptoSimApp> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authProvider);
-    final router = buildRouter(ref);
+    // 路由器只创建一次。之前每次登录态变化都 new 一个 GoRouter：
+    // 导航栈被整体重置，且 context.go 与重建时序存在竞态。
+    // 守卫实时读取登录态（见 router.dart），不再需要靠重建路由器来刷新。
+    _router ??= buildRouter(ref);
     return MaterialApp.router(
       title: 'CryptoSim 模拟交易所',
       theme: AppTheme.dark(),
-      routerConfig: router,
-      builder: (context, child) {
-        // 登录态变化时重建路由（守卫生效）
-        return KeyedSubtree(key: ValueKey(auth.loggedIn), child: child!);
-      },
+      routerConfig: _router,
     );
   }
 }

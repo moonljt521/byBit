@@ -33,12 +33,18 @@ const _destinations = [
 ];
 
 /// 底部 Tab 路由 + 登录守卫。
+///
+/// ⚠️ 路由实例整个 App 生命周期只应创建一次（见 main.dart 的 `_router ??=`），
+/// 守卫必须用 `ref.read` **实时**读取登录态——闭包捕获创建时的快照的话，
+/// 登录成功后守卫看到的还是未登录，会把 context.go('/markets') 静默弹回
+/// /login，表现为「点登录无任何反应」。
 GoRouter buildRouter(WidgetRef ref) {
-  final auth = ref.watch(authProvider);
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: auth.loggedIn ? '/markets' : '/login',
+    initialLocation:
+        ref.read(authProvider).loggedIn ? '/markets' : '/login',
     redirect: (context, state) {
+      final auth = ref.read(authProvider); // 每次导航时实时读取
       final loggingIn = state.matchedLocation == '/login';
       if (!auth.loggedIn && !loggingIn) return '/login';
       if (auth.loggedIn && loggingIn) return '/markets';

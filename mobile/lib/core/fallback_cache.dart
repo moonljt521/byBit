@@ -54,10 +54,26 @@ class FallbackCache {
     try {
       final box = await _box();
       final rec = box.get(key) as Map?;
-      return rec?['data'];
+      final data = rec?['data'];
+      if (data == null) return null;
+      // Hive 反序列化不保留 Map 泛型：同一会话内写入的还能读出
+      // Map<String, dynamic>，但跨进程从磁盘读回的全是 Map<dynamic, dynamic>，
+      // 调用方 `as Map<String, dynamic>` 会直接抛类型异常。这里统一深归一化。
+      return _normalize(data);
     } catch (_) {
       return null;
     }
+  }
+
+  /// 深度归一化：所有层级的 Map 转成 Map<String, dynamic>，List 逐项递归。
+  static dynamic _normalize(dynamic v) {
+    if (v is Map) {
+      return v.map((k, e) => MapEntry(k.toString(), _normalize(e)));
+    }
+    if (v is List) {
+      return [for (final e in v) _normalize(e)];
+    }
+    return v;
   }
 
   Future<int> ts(String key) async {

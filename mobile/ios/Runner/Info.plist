@@ -49,5 +49,16 @@
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<!-- 后端为局域网 http:// 明文服务，需放开 ATS，否则请求被系统静默拒绝 -->
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsArbitraryLoads</key>
+			<true/>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+		</dict>
+		<!-- iOS 14+ 扫描局域网需此说明文案，缺失则系统不弹授权框、直接拒绝 -->
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>需要访问本地网络，用于自动发现并连接局域网内的 CryptoSim 服务器</string>
 	</dict>
 </plist>

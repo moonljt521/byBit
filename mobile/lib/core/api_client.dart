@@ -65,6 +65,14 @@ class CredentialStore {
     required String apiSecret,
     required String username,
   }) async {
+    // 先更新内存字段再持久化。
+    // 只写 storage 不写内存的话，loggedIn 在本次会话内永远是 false：
+    // 路由守卫会把登录后的 context.go('/markets') 静默弹回 /login，
+    // 真机上的表现就是「点登录按钮毫无反应」（请求其实成功了）。
+    this.token = token;
+    this.apiKey = apiKey;
+    this.apiSecret = apiSecret;
+    this.username = username;
     const sp = _storage;
     await sp.write(key: 'token', value: token);
     await sp.write(key: 'apiKey', value: apiKey);
