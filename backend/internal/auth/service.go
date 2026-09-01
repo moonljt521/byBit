@@ -30,6 +30,12 @@ var (
 	usernameRe = regexp.MustCompile(`^[a-zA-Z0-9_]{3,20}$`)
 )
 
+// 用户角色。
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
+
 type RegisterInput struct {
 	Email    string
 	Username string
@@ -90,6 +96,7 @@ func (s *Service) Register(in RegisterInput, ip, ua string) (*model.User, string
 		Email:        strings.ToLower(strings.TrimSpace(in.Email)),
 		Username:     in.Username,
 		PasswordHash: string(hash),
+		Role:         RoleUser, // 显式赋值，避免 GORM 写空串覆盖数据库默认值
 		Status:       1,
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -107,6 +114,37 @@ func (s *Service) Register(in RegisterInput, ip, ua string) (*model.User, string
 	}
 	s.writeLoginLog(&u.ID, u.Username, "注册", true, ip, ua)
 	return u, apiKey, apiSecret, nil
+}
+
+// SeedDemoUsers 幂等创建文档承诺的内置演示账号 demo / admin（各赠初始虚拟 USDT 并签发 HMAC 凭证）。
+// 仅在非生产环境调用：本地联调与 e2e 测试依赖这两个账号，生产环境不应存在公开口令账号。
+func (s *Service) SeedDemoUsers() error {
+	demos := []struct {
+		Email, Username, Password, Role string
+	}{
+		{"demo@cryptosim.local", "demo", "demo12345", RoleUser},
+		{"admin@cryptosim.local", "admin", "admin12345", RoleAdmin},
+	}
+	for _, d := range demos {
+		var n int64
+		if err := s.db.Model(&model.User{}).Where("username = ?", d.Username).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 { // 已存在则跳过，不改密码不重复发币
+			continue
+		}
+		u, _, _, err := s.Register(
+			RegisterInput{Email: d.Email, Username: d.Username, Password: d.Password},
+			"127.0.0.1", "seed",
+		)
+		if err != nil {
+			return err
+		}
+		if err := s.db.Model(&model.User{}).Where("id = ?", u.ID).Update("role", d.Role).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Login 支持邮箱或用户名登录，成功后轮换 HMAC 凭证。

@@ -17,36 +17,36 @@ import (
 )
 
 var (
-	ErrInvalidSide     = errors.New("side 取值 long/short")
-	ErrInvalidLeverage = errors.New("杠杆取值 1-20")
-	ErrInvalidAmount   = errors.New("数量必须大于 0")
-	ErrTooSmall        = errors.New("开仓金额太小（最小 5 USDT 名义价值）")
+	ErrInvalidSide      = errors.New("side 取值 long/short")
+	ErrInvalidLeverage  = errors.New("杠杆取值 1-20")
+	ErrInvalidAmount    = errors.New("数量必须大于 0")
+	ErrTooSmall         = errors.New("开仓金额太小（最小 5 USDT 名义价值）")
 	ErrPositionNotFound = errors.New("仓位不存在")
 	ErrPositionNotOpen  = errors.New("仓位已结束")
 	ErrNoPrice          = errors.New("暂时获取不到行情价格，请稍后再试")
 	ErrCloseTooLarge    = errors.New("平仓数量超过持仓")
-	ErrMarketNoPrice = errors.New("行情不可用")
+	ErrMarketNoPrice    = errors.New("行情不可用")
 )
 
 const (
-	feeTakerF     = "0.0005"    // taker 0.05%
-	maintRateF    = "0.005"     // 维持保证金率 0.5%
-	fundingRateF  = "0.0001"    // 每 8 小时 0.01%
-	minNotionalF  = "5"
-	fundingEvery  = 8 * time.Hour
-	SideLong      = "long"
-	SideShort     = "short"
+	feeTakerF    = "0.0005" // taker 0.05%
+	maintRateF   = "0.005"  // 维持保证金率 0.5%
+	fundingRateF = "0.0001" // 每 8 小时 0.01%
+	minNotionalF = "5"
+	fundingEvery = 8 * time.Hour
+	SideLong     = "long"
+	SideShort    = "short"
 )
 
 type Service struct {
-	db    *gorm.DB
+	db          *gorm.DB
 	lastPriceFn func(ctx context.Context, symbol string) (decimal.Decimal, error)
 	// Notify 强平事件回调（由 server 注入 WebSocket Hub）
-	Notify     func(userID int64, event any)
-	fee        decimal.Decimal
-	maint      decimal.Decimal
-	funding    decimal.Decimal
-	minNotion  decimal.Decimal
+	Notify    func(userID int64, event any)
+	fee       decimal.Decimal
+	maint     decimal.Decimal
+	funding   decimal.Decimal
+	minNotion decimal.Decimal
 }
 
 // PriceFn 实时价格函数（生产由 market.Service.LastPrice 提供，测试可注入）。

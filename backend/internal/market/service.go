@@ -35,7 +35,7 @@ type Service struct {
 	ups   []namedUpstream
 	syms  []string
 	mu    sync.Mutex
-	fails map[string]int      // 上游连续失败次数
+	fails map[string]int       // 上游连续失败次数
 	until map[string]time.Time // 上游熔断截止时间
 }
 

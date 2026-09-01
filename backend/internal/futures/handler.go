@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"cryptosim/internal/balance"
-	"cryptosim/internal/middleware"
 	"cryptosim/internal/market"
+	"cryptosim/internal/middleware"
 	"cryptosim/internal/model"
 	"cryptosim/internal/pkg/response"
 
@@ -94,9 +94,9 @@ func (h *Handler) Close(c *gin.Context) {
 
 type PositionView struct {
 	model.FuturesPosition
-	MarkPrice      decimal.Decimal `json:"mark_price"`
-	UnrealizedPnl  decimal.Decimal `json:"unrealized_pnl"`
-	ROI            string          `json:"roi"`
+	MarkPrice        decimal.Decimal `json:"mark_price"`
+	UnrealizedPnl    decimal.Decimal `json:"unrealized_pnl"`
+	ROI              string          `json:"roi"`
 	LiquidationPrice decimal.Decimal `json:"liquidation_price"`
 }
 
@@ -115,10 +115,10 @@ func (h *Handler) view(ctx context.Context, p model.FuturesPosition) PositionVie
 		roi = uPnL.Div(p.Margin).Mul(decimal.NewFromInt(100)).Round(2).StringFixed(2)
 	}
 	return PositionView{
-		FuturesPosition: p,
-		MarkPrice:       mark,
-		UnrealizedPnl:   uPnL,
-		ROI:             roi,
+		FuturesPosition:  p,
+		MarkPrice:        mark,
+		UnrealizedPnl:    uPnL,
+		ROI:              roi,
 		LiquidationPrice: h.svc.LiquidationPrice(&p),
 	}
 }

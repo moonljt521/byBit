@@ -44,3 +44,4 @@ pgdata/
 *.swp
 test-results/
 dump.rdb
+.workbuddy-ai/

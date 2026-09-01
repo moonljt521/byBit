@@ -9,13 +9,13 @@ import (
 
 // 业务错误码
 const (
-	CodeOK              = 0
-	CodeInvalidParams   = 10001
-	CodeAccountTaken    = 10002
-	CodeBadCredentials  = 10003
-	CodeUnauthorized    = 10401
-	CodeForbidden       = 10403
-	CodeInternal        = 10500
+	CodeOK             = 0
+	CodeInvalidParams  = 10001
+	CodeAccountTaken   = 10002
+	CodeBadCredentials = 10003
+	CodeUnauthorized   = 10401
+	CodeForbidden      = 10403
+	CodeInternal       = 10500
 )
 
 func OK(c *gin.Context, data any) {

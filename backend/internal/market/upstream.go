@@ -116,9 +116,9 @@ func okxInstId(symbol string) string {
 var okxBar = map[string]string{"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D"}
 
 type okxResp struct {
-	Code string            `json:"code"`
-	Msg  string            `json:"msg"`
-	Data json.RawMessage   `json:"data"`
+	Code string          `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
 }
 
 func (c *okxClient) get(ctx context.Context, path string, out any) error {
@@ -360,10 +360,10 @@ func (c *binanceClient) Depth(ctx context.Context, symbol string, sz int) (*Dept
 
 func (c *binanceClient) Trades(ctx context.Context, symbol string, limit int) ([]Trade, error) {
 	var rows []struct {
-		Price       string `json:"price"`
-		Qty         string `json:"qty"`
-		Time        int64  `json:"time"`
-		IsBuyerMaker bool  `json:"isBuyerMaker"`
+		Price        string `json:"price"`
+		Qty          string `json:"qty"`
+		Time         int64  `json:"time"`
+		IsBuyerMaker bool   `json:"isBuyerMaker"`
 	}
 	path := fmt.Sprintf("/api/v3/trades?symbol=%s&limit=%d", symbol, limit)
 	if err := c.get(ctx, path, &rows); err != nil {

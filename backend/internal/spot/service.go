@@ -32,14 +32,14 @@ var (
 )
 
 const (
-	feeTaker   = "0.001"  // taker 手续费 0.1%
-	slippage   = "0.0005" // 市价单滑点 0.05%
-	minAmount  = "0.00000001"
+	feeTaker    = "0.001"  // taker 手续费 0.1%
+	slippage    = "0.0005" // 市价单滑点 0.05%
+	minAmount   = "0.00000001"
 	minNotional = "5" // 最小下单金额（USDT），与真实交易所一致
-	SideBuy    = "buy"
-	SideSell   = "sell"
-	TypeLimit  = "limit"
-	TypeMarket = "market"
+	SideBuy     = "buy"
+	SideSell    = "sell"
+	TypeLimit   = "limit"
+	TypeMarket  = "market"
 )
 
 type Service struct {

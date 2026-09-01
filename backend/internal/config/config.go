@@ -25,17 +25,17 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Env:            getEnv("SIM_ENV", "dev"),
-		HTTPAddr:       getEnv("SIM_HTTP_ADDR", ":8080"),
-		DBDSN:          getEnv("SIM_DB_DSN", "postgres://cryptosim:cryptosim@127.0.0.1:5432/cryptosim?sslmode=disable"),
-		RedisAddr:      getEnv("SIM_REDIS_ADDR", "127.0.0.1:6379"),
-		JWTSecret:      getEnv("SIM_JWT_SECRET", "dev-secret-do-not-use-in-production"),
-		JWTExpire:      24 * time.Hour,
-		InitialUSDT:    getEnv("SIM_INITIAL_USDT", "10000"),
-		HTTPProxy:      getEnv("SIM_HTTP_PROXY", ""),
-		LearnDir:       getEnv("SIM_LEARN_DIR", "../content/learning"),
-		EncKey:         getEnv("SIM_ENC_KEY", "dev-enc-key-change-in-production"),
-		AuthRateLimit:  getEnvInt("SIM_AUTH_RATE_LIMIT", 20),		AllowedOrigins: strings.Split(getEnv("SIM_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"), ","),
+		Env:           getEnv("SIM_ENV", "dev"),
+		HTTPAddr:      getEnv("SIM_HTTP_ADDR", ":8080"),
+		DBDSN:         getEnv("SIM_DB_DSN", "postgres://cryptosim:cryptosim@127.0.0.1:5432/cryptosim?sslmode=disable"),
+		RedisAddr:     getEnv("SIM_REDIS_ADDR", "127.0.0.1:6379"),
+		JWTSecret:     getEnv("SIM_JWT_SECRET", "dev-secret-do-not-use-in-production"),
+		JWTExpire:     24 * time.Hour,
+		InitialUSDT:   getEnv("SIM_INITIAL_USDT", "10000"),
+		HTTPProxy:     getEnv("SIM_HTTP_PROXY", ""),
+		LearnDir:      getEnv("SIM_LEARN_DIR", "../content/learning"),
+		EncKey:        getEnv("SIM_ENC_KEY", "dev-enc-key-change-in-production"),
+		AuthRateLimit: getEnvInt("SIM_AUTH_RATE_LIMIT", 20), AllowedOrigins: strings.Split(getEnv("SIM_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"), ","),
 	}
 }
 

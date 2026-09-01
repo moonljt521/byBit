@@ -1,8 +1,9 @@
 // Package ws WebSocket 推送中心：
-//   GET /ws/market?channels=tickers[,kline:BTCUSDT]&token=<JWT>
-//   channels:
-//     tickers          公开：全交易对 24h 行情快照（约每 3 秒）
-//     private:{uid}    私有：本人订单成交通知（需 token 且 uid 匹配）
+//
+//	GET /ws/market?channels=tickers[,kline:BTCUSDT]&token=<JWT>
+//	channels:
+//	  tickers          公开：全交易对 24h 行情快照（约每 3 秒）
+//	  private:{uid}    私有：本人订单成交通知（需 token 且 uid 匹配）
 package ws
 
 import (
@@ -36,11 +37,11 @@ type Client struct {
 }
 
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*Client]bool
+	mu       sync.RWMutex
+	clients  map[*Client]bool
 	upgrader websocket.Upgrader
-	origins []string
-	market  *market.Service
+	origins  []string
+	market   *market.Service
 }
 
 func NewHub(marketSvc *market.Service, origins []string) *Hub {

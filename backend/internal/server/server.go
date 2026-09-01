@@ -55,6 +55,14 @@ func New(cfg *config.Config, st *store.Store) (*Server, error) {
 
 	authSvc := auth.NewService(st.DB, cfg.InitialUSDT, cryptor)
 	authH := auth.NewHandler(authSvc, cfg.JWTSecret, cfg.JWTExpire)
+
+	// 内置演示账号（demo / admin）仅在非生产环境自动创建，供本地联调与 e2e 测试使用。
+	if cfg.Env != "production" {
+		if err := authSvc.SeedDemoUsers(); err != nil {
+			return nil, err
+		}
+	}
+
 	accH := account.NewHandler(account.NewService(st.DB, cfg.InitialUSDT))
 
 	marketSvc, err := market.NewService(st.DB, st.Redis, cfg.HTTPProxy)

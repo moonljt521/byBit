@@ -158,7 +158,7 @@ func (m *Mock) Tickers(_ context.Context, symbols []string) ([]Ticker, error) {
 		out = append(out, Ticker{
 			Symbol: s, Last: f64(p), Open24h: f64(o),
 			High24h: f64(math.Max(p, o) * 1.015), Low24h: f64(math.Min(p, o) * 0.985),
-			Vol24h: strconv.FormatFloat(10000*m.rng.Float64()+500, 'f', 3, 64),
+			Vol24h:    strconv.FormatFloat(10000*m.rng.Float64()+500, 'f', 3, 64),
 			ChangePct: pct(f64(p), f64(o)),
 		})
 	}
@@ -184,8 +184,8 @@ func (m *Mock) Depth(_ context.Context, symbol string, sz int) (*Depth, error) {
 	for i := 0; i < sz; i++ {
 		bp := p - spread*float64(i+1)
 		ap := p + spread*float64(i+1)
-		bids = append(bids, DepthLevel{f64(bp), strconv.FormatFloat(0.5 + m.rng.Float64()*3, 'f', 4, 64)})
-		asks = append(asks, DepthLevel{f64(ap), strconv.FormatFloat(0.5 + m.rng.Float64()*3, 'f', 4, 64)})
+		bids = append(bids, DepthLevel{f64(bp), strconv.FormatFloat(0.5+m.rng.Float64()*3, 'f', 4, 64)})
+		asks = append(asks, DepthLevel{f64(ap), strconv.FormatFloat(0.5+m.rng.Float64()*3, 'f', 4, 64)})
 	}
 	return &Depth{Bids: bids, Asks: asks}, nil
 }

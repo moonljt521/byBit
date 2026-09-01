@@ -12,7 +12,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
-	Role         string    `json:"role"` // user / admin
+	Role         string    `gorm:"default:user" json:"role"` // user / admin
 	Status       int16     `json:"status"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

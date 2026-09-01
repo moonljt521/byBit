@@ -85,7 +85,7 @@ func (s *Service) get(sub, slug string) (*Doc, error) {
 	return &Doc{Slug: slug, Title: parseTitle(text), Content: text}, nil
 }
 
-func (s *Service) Coins() ([]Item, error)  { return s.list("coins") }
+func (s *Service) Coins() ([]Item, error)    { return s.list("coins") }
 func (s *Service) Concepts() ([]Item, error) { return s.list("concepts") }
 
 func (s *Service) Coin(slug string) (*Doc, error)    { return s.get("coins", slug) }

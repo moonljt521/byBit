@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"cryptosim/internal/balance"
-	"cryptosim/internal/middleware"
 	"cryptosim/internal/market"
+	"cryptosim/internal/middleware"
 	"cryptosim/internal/pkg/response"
 
 	"github.com/gin-gonic/gin"

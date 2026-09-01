@@ -33,6 +33,9 @@ services:
       SIM_DB_DSN: postgres://cryptosim:cryptosim@postgres:5432/cryptosim?sslmode=disable
       SIM_REDIS_ADDR: redis:6379
       SIM_JWT_SECRET: ${SIM_JWT_SECRET:-change-me-in-production}
+      # 不注入则回落到后端默认值，等同明文存储 API Secret，切勿用于生产。
+      # 生产请用 deploy/docker-compose.prod.yml，它会用 :? 强制校验这两个密钥。
+      SIM_ENC_KEY: ${SIM_ENC_KEY:-dev-enc-key-change-in-production}
       SIM_ALLOWED_ORIGINS: http://localhost,http://localhost:3000
     ports:
       - "8080:8080"
